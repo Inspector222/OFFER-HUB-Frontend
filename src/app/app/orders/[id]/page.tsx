@@ -203,6 +203,7 @@ export default function OrderDetailPage(): React.JSX.Element {
           {roles.isSeller && (
             <SellerStatusPanel
               status={order.status}
+              escrowStatus={order.escrow?.status}
               isWorkCompleted={roles.isWorkCompleted}
               isProcessing={actions.isProcessing}
               onMarkCompleted={actions.handleMarkCompleted}
@@ -210,7 +211,7 @@ export default function OrderDetailPage(): React.JSX.Element {
             />
           )}
 
-          {roles.isSeller && roles.isOrderComplete && (
+          {roles.isSeller && roles.isPayoutExpected && (
             <PayoutStatusCard orderId={order.id} />
           )}
 
