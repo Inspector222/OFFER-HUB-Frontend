@@ -19,6 +19,7 @@ import {
   deleteBankAccount,
   SUPPORTED_CORRIDORS,
   type BankAccount,
+  type BankAccountApiError,
 } from "@/lib/api/bank-accounts";
 import { getMyKyc, type KycProfile } from "@/lib/api/kyc";
 import { BankAccountForm, COUNTRY_FLAGS } from "@/components/bank-accounts/BankAccountForm";
@@ -26,6 +27,20 @@ import { BankAccountForm, COUNTRY_FLAGS } from "@/components/bank-accounts/BankA
 const RAIL_LABELS: Record<string, string> = Object.fromEntries(
   SUPPORTED_CORRIDORS.map((corridor) => [corridor.rail, corridor.label])
 );
+
+/**
+ * The backend's own message for BANK_ACCOUNT_HAS_PAYOUTS is written for logs
+ * and API consumers (raw id, "1 payout(s)") — accurate, but not something to
+ * hand a freelancer verbatim in a toast. Every other error code still shows
+ * the backend's message as-is; this is the one case worth a real sentence.
+ */
+function friendlyDeleteError(error: unknown): string {
+  const code = (error as BankAccountApiError | undefined)?.code;
+  if (code === "BANK_ACCOUNT_HAS_PAYOUTS") {
+    return "This account can't be removed because a payout already references it — that record needs to stay intact. Add a new account instead and set it as your default.";
+  }
+  return error instanceof Error ? error.message : "Could not delete this account.";
+}
 
 function maskAccountNumber(accountNumber: string): string {
   const last4 = accountNumber.slice(-4);
@@ -233,6 +248,7 @@ export function BankAccountSelector({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<BankAccount | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   // KYC compliance gate state
@@ -326,10 +342,20 @@ export function BankAccountSelector({
     }
   }
 
+  function handleOpenDelete(account: BankAccount) {
+    setDeleteError(null);
+    setPendingDelete(account);
+  }
+
+  function handleCloseDeleteModal() {
+    setPendingDelete(null);
+    setDeleteError(null);
+  }
+
   async function handleConfirmDelete() {
     if (!token || !pendingDelete) return;
     const account = pendingDelete;
-    setActionError(null);
+    setDeleteError(null);
     setBusyId(account.id);
     try {
       await deleteBankAccount(token, account.id);
@@ -337,9 +363,9 @@ export function BankAccountSelector({
       setPendingDelete(null);
       setToast({ type: "success", message: "Bank account deleted" });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not delete this account.";
-      setActionError(message);
-      setToast({ type: "error", message });
+      // Shown inline in the confirmation modal (kept open) — not a toast:
+      // the whole point is the user is already looking right at it.
+      setDeleteError(friendlyDeleteError(error));
     } finally {
       setBusyId(null);
     }
@@ -465,7 +491,7 @@ export function BankAccountSelector({
               busy={busyId === account.id}
               onSelect={onSelect}
               onSetDefault={handleSetDefault}
-              onDelete={setPendingDelete}
+              onDelete={handleOpenDelete}
             />
           ))}
         </div>
@@ -485,7 +511,7 @@ export function BankAccountSelector({
 
       <ConfirmationModal
         isOpen={pendingDelete !== null}
-        onClose={() => setPendingDelete(null)}
+        onClose={handleCloseDeleteModal}
         onConfirm={handleConfirmDelete}
         title="Delete this bank account?"
         message={
@@ -496,6 +522,7 @@ export function BankAccountSelector({
         confirmText="Delete account"
         variant="danger"
         isLoading={pendingDelete !== null && busyId === pendingDelete.id}
+        error={deleteError}
       />
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
