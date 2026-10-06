@@ -67,7 +67,11 @@ export default function WalletPage(): React.JSX.Element {
     void load();
   }, [token, load, refreshWalletBalance]);
 
-  usePullToRefresh(refresh);
+  usePullToRefresh(refresh, 72, {
+    scrollContainerId: "main-content",
+    isRefreshing,
+    triggerOnMove: true,
+  });
 
   // Before hydration the store is empty even for a signed-in user, so an early
   // `!token` would flash the sign-in wall on every reload.
